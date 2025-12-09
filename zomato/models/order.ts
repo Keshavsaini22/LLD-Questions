@@ -15,7 +15,7 @@ export abstract class Order {
   protected scheduled: string = "";
 
   constructor() {
-    this.orderId = Order.nextOrderId++;
+    this.orderId = ++Order.nextOrderId;
   }
 
   public processPayment(): boolean {

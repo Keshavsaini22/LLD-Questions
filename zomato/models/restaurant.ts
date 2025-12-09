@@ -1,16 +1,17 @@
 import { MenuItem } from "./menu-item";
 
 export class Restaurant {
+  private static nextOrderId = 0;
+
   private id: number;
   private name: string;
   private location: string;
-  private menu: MenuItem[];
+  private menus: MenuItem[];
 
-  constructor(id: number, name: string, location: string, menu: MenuItem[]) {
-    this.id = id; //auto generated
+  constructor(name: string, location: string) {
+    this.id = ++Restaurant.nextOrderId;; //auto generated
     this.name = name;
     this.location = location;
-    this.menu = menu;
   }
 
   getName(): string {
@@ -21,8 +22,8 @@ export class Restaurant {
     return this.location;
   }
 
-  getMenu(): MenuItem[] {
-    return this.menu;
+  getMenus(): MenuItem[] {
+    return this.menus;
   }
 
   setName(name: string): void {
@@ -33,7 +34,7 @@ export class Restaurant {
     this.location = location;
   }
 
-  setMenu(menu: MenuItem[]): void {
-    this.menu = menu;
+  setMenu(menu: MenuItem): void {
+    this.menus.push(menu);
   }
 }
