@@ -7,3 +7,5 @@ Functional Requirements
 
 “C++ has shared-memory multithreading, so concurrent threads can mutate the same object simultaneously, which causes race conditions and requires mutexes.
 TypeScript (Node.js) runs on a single-threaded event loop where code execution is atomic between awaits, so shared-memory race conditions do not occur, making mutexes unnecessary at the language level.”
+
+![alt text](image.png)
