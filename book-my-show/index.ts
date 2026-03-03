@@ -123,11 +123,14 @@ class StandardPricingStrategy implements PricingStrategy {
   }
 }
 
-// ================= SHOW (Handles Concurrency) =================
+// ================= SHOW (WITH 5-MIN LOCK) =================
 
 class Show {
   private seatStatus = new Map<string, SeatStatus>();
-  private seatOwner = new Map<string, string>(); // seat -> userId
+
+  private seatLockInfo = new Map<string, { userId: string; lockedAt: number; timeoutRef: any }>();
+
+  private static LOCK_DURATION = 5 * 60 * 1000; // 5 minutes
 
   constructor(
     public id: string,
@@ -143,7 +146,21 @@ class Show {
   }
 
   lockSeats(seats: string[], userId: string) {
+    const now = Date.now();
+
     for (let seat of seats) {
+      const status = this.seatStatus.get(seat);
+
+      if (status === SeatStatus.LOCKED) {
+        const lockInfo = this.seatLockInfo.get(seat)!;
+
+        if (now - lockInfo.lockedAt > Show.LOCK_DURATION) {
+          this.forceReleaseSeat(seat);
+        } else {
+          throw new Error(`Seat already locked: ${seat}`);
+        }
+      }
+
       if (this.seatStatus.get(seat) !== SeatStatus.AVAILABLE) {
         throw new Error(`Seat not available: ${seat}`);
       }
@@ -151,23 +168,59 @@ class Show {
 
     for (let seat of seats) {
       this.seatStatus.set(seat, SeatStatus.LOCKED);
-      this.seatOwner.set(seat, userId);
+
+      const timeoutRef = setTimeout(() => {
+        this.autoReleaseSeat(seat);
+      }, Show.LOCK_DURATION);
+
+      this.seatLockInfo.set(seat, {
+        userId,
+        lockedAt: now,
+        timeoutRef,
+      });
     }
+  }
+
+  private autoReleaseSeat(seat: string) {
+    const lockInfo = this.seatLockInfo.get(seat);
+    if (!lockInfo) return;
+
+    this.seatStatus.set(seat, SeatStatus.AVAILABLE);
+    this.seatLockInfo.delete(seat);
+
+    console.log(`Seat ${seat} auto-released after 5 mins`);
+  }
+
+  private forceReleaseSeat(seat: string) {
+    const lockInfo = this.seatLockInfo.get(seat);
+    if (!lockInfo) return;
+
+    clearTimeout(lockInfo.timeoutRef);
+    this.seatStatus.set(seat, SeatStatus.AVAILABLE);
+    this.seatLockInfo.delete(seat);
   }
 
   releaseSeats(seats: string[], userId: string) {
     for (let seat of seats) {
-      if (this.seatOwner.get(seat) === userId) {
+      const lockInfo = this.seatLockInfo.get(seat);
+
+      if (lockInfo && lockInfo.userId === userId) {
+        clearTimeout(lockInfo.timeoutRef);
         this.seatStatus.set(seat, SeatStatus.AVAILABLE);
-        this.seatOwner.delete(seat);
+        this.seatLockInfo.delete(seat);
       }
     }
   }
 
   confirmSeats(seats: string[]) {
     for (let seat of seats) {
+      const lockInfo = this.seatLockInfo.get(seat);
+      if (lockInfo) {
+        clearTimeout(lockInfo.timeoutRef);
+        this.seatLockInfo.delete(seat);
+      }
+
       this.seatStatus.set(seat, SeatStatus.BOOKED);
-      this.seatOwner.delete(seat);
     }
   }
 
@@ -202,7 +255,7 @@ class CreditCardPayment implements PaymentStrategy {
   }
 }
 
-// ================= OBSERVER (Notification) =================
+// ================= OBSERVER Notification ==================
 
 interface Observer {
   notify(user: User, booking: Booking): void;
@@ -227,9 +280,7 @@ class NotificationService {
   private constructor() {}
 
   static getInstance(): NotificationService {
-    if (!this.instance) {
-      this.instance = new NotificationService();
-    }
+    if (!this.instance) this.instance = new NotificationService();
     return this.instance;
   }
 
@@ -255,7 +306,7 @@ class Booking {
   ) {}
 }
 
-// ================= FACADE SINGLETON =================
+// ================= BOOKMYSHOW FACADE =================
 
 class BookMyShow {
   private static instance: BookMyShow;
@@ -267,16 +318,13 @@ class BookMyShow {
   private shows = new Map<string, Show>();
   private bookings = new Map<string, Booking>();
 
-  // Optimized mappings
   private cityMovies = new Map<string, Set<string>>();
   private cityMovieShows = new Map<string, Map<string, Show[]>>();
 
   private constructor() {}
 
   static getInstance(): BookMyShow {
-    if (!this.instance) {
-      this.instance = new BookMyShow();
-    }
+    if (!this.instance) this.instance = new BookMyShow();
     return this.instance;
   }
 
@@ -376,8 +424,6 @@ function main() {
   notificationService.addObserver(new EmailNotification());
   notificationService.addObserver(new SMSNotification());
 
-  // Setup Admin Data
-
   const city = new City("C1", "Delhi");
   bms.addCity(city);
 
@@ -395,8 +441,6 @@ function main() {
   const show = new Show("S1", movie, theatre, screen, new Date(), new StandardPricingStrategy());
 
   bms.addShow(show);
-
-  // User Flow
 
   const user = bms.registerUser("U1", "Rahul");
 
