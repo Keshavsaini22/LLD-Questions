@@ -12,7 +12,8 @@ enum SlotStatus {
     AVAILABLE = "AVAILABLE",
     RESERVED = "RESERVED",
     OCCUPIED = "OCCUPIED",
-    EXPIRED = "EXPIRED"
+    EXPIRED = "EXPIRED",
+    OUT_OF_SERVICE = "OUT_OF_SERVICE"
 }
 
 enum PackageStatus {
@@ -29,7 +30,7 @@ enum TokenStatus {
 }
 
 // ============================================================
-// SIMPLE ASYNC MUTEX (Machine-Level Lock)
+// MUTEX (Machine-Level)
 // ============================================================
 
 class Mutex {
@@ -61,10 +62,11 @@ class Mutex {
 }
 
 // ============================================================
-// CORE ENTITIES
+// SLOT
 // ============================================================
 
 class LockerSlot {
+
     constructor(
         public id: string,
         public size: SlotSize,
@@ -72,7 +74,7 @@ class LockerSlot {
         public packageId?: string
     ) {}
 
-    reserve(packageId: string): void {
+    reserve(packageId: string) {
         if (this.status !== SlotStatus.AVAILABLE)
             throw new Error("Slot not available");
 
@@ -80,17 +82,25 @@ class LockerSlot {
         this.packageId = packageId;
     }
 
-    occupy(): void {
+    occupy() {
+        if (this.status !== SlotStatus.RESERVED)
+            throw new Error("Invalid transition");
+
         this.status = SlotStatus.OCCUPIED;
     }
 
-    release(): void {
+    release() {
         this.status = SlotStatus.AVAILABLE;
         this.packageId = undefined;
     }
 }
 
+// ============================================================
+// PACKAGE + TOKEN
+// ============================================================
+
 class AccessToken {
+
     constructor(
         public code: string,
         public packageId: string,
@@ -105,6 +115,7 @@ class AccessToken {
 }
 
 class Package {
+
     constructor(
         public id: string,
         public size: SlotSize,
@@ -114,17 +125,6 @@ class Package {
         public slotId?: string,
         public token?: AccessToken
     ) {}
-}
-
-class DeliveryAgent {
-    constructor(
-        public id: string,
-        public serviceableZipcodes: string[]
-    ) {}
-
-    canDeliver(zip: string): boolean {
-        return this.serviceableZipcodes.includes(zip);
-    }
 }
 
 // ============================================================
@@ -138,46 +138,36 @@ interface SlotAssignmentStrategy {
 class FirstFitStrategy implements SlotAssignmentStrategy {
     assign(slots: LockerSlot[], size: SlotSize): LockerSlot | null {
         return slots.find(
-            s => s.size === size && s.status === SlotStatus.AVAILABLE
+            s => s.size === size &&
+                 s.status === SlotStatus.AVAILABLE
         ) || null;
     }
 }
 
-interface AgentAssignmentStrategy {
-    assign(agents: DeliveryAgent[], zipcode: string): DeliveryAgent;
-}
-
-class RandomAgentStrategy implements AgentAssignmentStrategy {
-    assign(agents: DeliveryAgent[], zipcode: string): DeliveryAgent {
-        const eligible = agents.filter(a => a.canDeliver(zipcode));
-        if (!eligible.length)
-            throw new Error("No agent available");
-
-        return eligible[Math.floor(Math.random() * eligible.length)];
-    }
-}
-
 interface SlotOpenStrategy {
-    validate(token: string, locker: LockerSystem): boolean;
+    validate(token: string): Package;
 }
 
 class OTPStrategy implements SlotOpenStrategy {
-    validate(token: string, locker: LockerSystem): boolean {
-        return locker.validateToken(token);
+    validate(token: string): Package {
+        return PackageManager.getInstance()
+            .validateToken(token);
     }
 }
 
 class BarcodeStrategy implements SlotOpenStrategy {
-    validate(token: string, locker: LockerSystem): boolean {
-        return locker.validateToken(token);
+    validate(token: string): Package {
+        return PackageManager.getInstance()
+            .validateToken(token);
     }
 }
 
 // ============================================================
-// MANAGERS
+// MANAGERS (Singleton)
 // ============================================================
 
 class PackageManager {
+
     private static instance: PackageManager;
     private packages = new Map<string, Package>();
     private tokens = new Map<string, AccessToken>();
@@ -194,12 +184,6 @@ class PackageManager {
         this.packages.set(pkg.id, pkg);
     }
 
-    getPackage(id: string): Package {
-        const pkg = this.packages.get(id);
-        if (!pkg) throw new Error("Package not found");
-        return pkg;
-    }
-
     generateToken(pkg: Package): AccessToken {
         const token = new AccessToken(
             "T-" + Math.random().toString(36).substring(2),
@@ -210,7 +194,7 @@ class PackageManager {
         return token;
     }
 
-    validateAndUseToken(code: string): Package {
+    validateToken(code: string): Package {
         const token = this.tokens.get(code);
         if (!token) throw new Error("Invalid token");
 
@@ -222,124 +206,17 @@ class PackageManager {
             throw new Error("Token expired");
         }
 
-        token.status = TokenStatus.USED;
-        return this.getPackage(token.packageId);
-    }
-}
-
-class AgentManager {
-    private agents: DeliveryAgent[] = [];
-
-    addAgent(agent: DeliveryAgent) {
-        this.agents.push(agent);
+        return this.packages.get(token.packageId)!;
     }
 
-    assignAgent(zipcode: string, strategy: AgentAssignmentStrategy) {
-        return strategy.assign(this.agents, zipcode);
+    consumeToken(code: string) {
+        const token = this.tokens.get(code);
+        if (token) token.status = TokenStatus.USED;
     }
-}
-
-// ============================================================
-// LOCKER SYSTEM (Machine-Level Lock Enforced)
-// ============================================================
-
-class LockerSystem {
-
-    private mutex = new Mutex();
-    private openStrategy!: SlotOpenStrategy;
-
-    constructor(
-        public slots: LockerSlot[],
-        private slotStrategy: SlotAssignmentStrategy
-    ) {}
-
-    setOpenStrategy(strategy: SlotOpenStrategy) {
-        this.openStrategy = strategy;
-    }
-
-    async deposit(pkg: Package) {
-
-        await this.mutex.acquire();  // 🔒 machine lock
-
-        try {
-            const slot = this.slotStrategy.assign(
-                this.slots,
-                pkg.size
-            );
-
-            if (!slot)
-                throw new Error("No slot available");
-
-            slot.reserve(pkg.id);
-            slot.occupy();
-
-            pkg.slotId = slot.id;
-            pkg.status = PackageStatus.DELIVERED_TO_LOCKER;
-
-            const token =
-                PackageManager.getInstance().generateToken(pkg);
-
-            console.log(
-                `Notification sent: OTP ${token.code}`
-            );
-
-        } finally {
-            this.mutex.release(); // 🔓 release machine
-        }
-    }
-
-    async open(tokenCode: string) {
-
-        await this.mutex.acquire();  // 🔒 only one operation
-
-        try {
-            if (!this.openStrategy)
-                throw new Error("Open strategy not set");
-
-            if (!this.openStrategy.validate(tokenCode, this))
-                throw new Error("Invalid credential");
-
-            const pkg =
-                PackageManager.getInstance()
-                    .validateAndUseToken(tokenCode);
-
-            const slot = this.slots.find(
-                s => s.id === pkg.slotId
-            );
-
-            if (!slot)
-                throw new Error("Slot not found");
-
-            slot.release();
-            pkg.status = PackageStatus.PICKED_UP;
-
-            console.log("Package picked up successfully");
-
-        } finally {
-            this.mutex.release();
-        }
-    }
-
-    validateToken(code: string): boolean {
-        try {
-            PackageManager.getInstance()
-                .validateAndUseToken(code);
-            return true;
-        } catch {
-            return false;
-        }
-    }
-}
-
-class Locker {
-    constructor(
-        public id: string,
-        public zipcode: string,
-        public lockerSystem: LockerSystem
-    ) {}
 }
 
 class LockerManager {
+
     private static instance: LockerManager;
     private lockers: Locker[] = [];
 
@@ -361,15 +238,154 @@ class LockerManager {
 }
 
 // ============================================================
-// MAIN FLOW
+// STATE PATTERN (Machine-Level)
+// ============================================================
+
+interface LockerState {
+    deposit(locker: LockerSystem, pkg: Package): Promise<void>;
+    open(locker: LockerSystem, token: string): Promise<void>;
+}
+
+class IdleState implements LockerState {
+
+    async deposit(locker: LockerSystem, pkg: Package) {
+        locker.setState(new ServingAgentState());
+        await locker.depositInternal(pkg);
+        locker.setState(new IdleState());
+    }
+
+    async open(locker: LockerSystem, token: string) {
+        locker.setState(new ServingCustomerState());
+        await locker.openInternal(token);
+        locker.setState(new IdleState());
+    }
+}
+
+class ServingAgentState implements LockerState {
+    async deposit() { throw new Error("Machine busy"); }
+    async open() { throw new Error("Agent operation active"); }
+}
+
+class ServingCustomerState implements LockerState {
+    async deposit() { throw new Error("Customer operation active"); }
+    async open() { throw new Error("Machine busy"); }
+}
+
+// ============================================================
+// LOCKER SYSTEM
+// ============================================================
+
+class LockerSystem {
+
+    private mutex = new Mutex();
+    private state: LockerState = new IdleState();
+    private openStrategy!: SlotOpenStrategy;
+
+    constructor(
+        public id: string,
+        public slots: LockerSlot[],
+        private slotStrategy: SlotAssignmentStrategy
+    ) {}
+
+    setState(state: LockerState) {
+        this.state = state;
+    }
+
+    setOpenStrategy(strategy: SlotOpenStrategy) {
+        this.openStrategy = strategy;
+    }
+
+    async deposit(pkg: Package) {
+
+        await this.mutex.acquire();
+        try {
+            await this.state.deposit(this, pkg);
+        } finally {
+            this.mutex.release();
+        }
+    }
+
+    async open(token: string) {
+
+        await this.mutex.acquire();
+        try {
+            await this.state.open(this, token);
+        } finally {
+            this.mutex.release();
+        }
+    }
+
+    async depositInternal(pkg: Package) {
+
+        const slot =
+            this.slotStrategy.assign(this.slots, pkg.size);
+
+        if (!slot)
+            throw new Error("No slot available");
+
+        slot.reserve(pkg.id);
+        slot.occupy();
+
+        pkg.slotId = slot.id;
+        pkg.lockerId = this.id;
+        pkg.status = PackageStatus.DELIVERED_TO_LOCKER;
+
+        const token =
+            PackageManager.getInstance()
+                .generateToken(pkg);
+
+        console.log(
+            `Locker ${this.id} OTP: ${token.code}`
+        );
+    }
+
+    async openInternal(tokenCode: string) {
+
+        if (!this.openStrategy)
+            throw new Error("Open strategy not set");
+
+        const pkg =
+            this.openStrategy.validate(tokenCode);
+
+        if (pkg.lockerId !== this.id)
+            throw new Error("Wrong locker");
+
+        const slot =
+            this.slots.find(s => s.id === pkg.slotId);
+
+        if (!slot)
+            throw new Error("Slot not found");
+
+        slot.release();
+        pkg.status = PackageStatus.PICKED_UP;
+
+        PackageManager
+            .getInstance()
+            .consumeToken(tokenCode);
+
+        console.log("Package picked up");
+    }
+}
+
+class Locker {
+    constructor(
+        public id: string,
+        public zipcode: string,
+        public system: LockerSystem
+    ) {}
+}
+
+// ============================================================
+// MAIN
 // ============================================================
 
 async function main() {
 
-    const locker = new Locker(
+    const locker1 = new Locker(
         "L1",
         "560001",
         new LockerSystem(
+            "L1",
             [
                 new LockerSlot("S1", SlotSize.SMALL),
                 new LockerSlot("S2", SlotSize.MEDIUM)
@@ -378,31 +394,30 @@ async function main() {
         )
     );
 
-    LockerManager.getInstance().addLocker(locker);
+    LockerManager.getInstance().addLocker(locker1);
 
-    const agentManager = new AgentManager();
-    agentManager.addAgent(
-        new DeliveryAgent("A1", ["560001"])
+    const pkg = new Package(
+        "PKG1",
+        SlotSize.SMALL,
+        "560001"
     );
-
-    const pkg = new Package("PKG1", SlotSize.SMALL, "560001");
 
     PackageManager.getInstance().addPackage(pkg);
 
-    const agent = agentManager.assignAgent(
-        "560001",
-        new RandomAgentStrategy()
-    );
+    const lockers =
+        LockerManager.getInstance()
+            .findByZipcode("560001");
 
-    console.log("Agent assigned:", agent.id);
+    const selectedLocker = lockers[0];
 
-    locker.lockerSystem.setOpenStrategy(new BarcodeStrategy());
-    await locker.lockerSystem.deposit(pkg);
+    await selectedLocker.system.deposit(pkg);
 
     const token = pkg.token!.code;
 
-    locker.lockerSystem.setOpenStrategy(new OTPStrategy());
-    await locker.lockerSystem.open(token);
+    selectedLocker.system
+        .setOpenStrategy(new OTPStrategy());
+
+    await selectedLocker.system.open(token);
 }
 
 main();
