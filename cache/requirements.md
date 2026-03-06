@@ -16,3 +16,31 @@ We will keep our operations on one thread means one key operation will be in one
 
 
 For this problem go for write through and LRU cache
+
+
+Storage Interfaces- 
+CacheStorage<K,V> PUT,GET,REMOVE,CONTAIN_KEY,SIZE,GET_CAPACITY
+DBStorage<K,V>  WRITE, READ , DELETE
+
+STRATEGY-> different write policies, eviction algorithm (keyAccessed and evictKey)
+Utility classes-
+DoublyLinkedList<K> and DoublyLinkedListNode<K>
+KeyBasedExecutor - key hashing for same thread
+ 
+Core Component-
+Cache<K,V> - accessData() and updateData()
+
+Cache
+ ├── CacheStorage
+ ├── DBStorage
+ ├── EvictionPolicy
+ │      └── LRU
+ ├── WritePolicy
+ │      └── WriteThrough
+ ├── KeyBasedExecutor
+ └── DoublyLinkedList (for LRU)
+
+Strategy	Eviction + Write policy
+Singleton	KeyBasedExecutor
+Composition	Cache components
+Separation of concerns	Storage / DB / Policy
