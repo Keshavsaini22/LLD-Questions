@@ -23,6 +23,7 @@ export class ScheduledOrderFactory extends OrderFactor {
         paymentStrategy: PaymentStrategy,
         totalCost: number,
         orderType: string): Order {
+            
         let order = null;
         if (orderType === "Delivery") {
             order = new DeliveryOrder();
