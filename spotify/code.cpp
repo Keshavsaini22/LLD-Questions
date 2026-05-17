@@ -1,258 +1,365 @@
-// Online C++ compiler to run C++ program online
 #include <bits/stdc++.h>
-#include <iostream>
 using namespace std;
 
-// songs
-// playlist
-// adapter pattern-> devices
-// factory for making devices
-// strategy pattern for different kind of playlist play
-// audio manager
-// Spotify facade payttern
+/* ================= SONG ================= */
+
 class Song
 {
-public:
-    int id;
-    string name;
-    string url;
+    string title;
     string artist;
+    string filePath;
 
-    Song(int id, string name, string url, string artist)
-    {
-        this->id = id;
-        this->name = name;
-        this->url = url;
-        this->artist = artist;
-    }
+public:
+    Song(string title, string artist, string filePath)
+        : title(title), artist(artist), filePath(filePath) {}
+
+    string getTitle() { return title; }
+    string getArtist() { return artist; }
+    string getFilePath() { return filePath; }
 };
+
+/* ================= PLAYLIST ================= */
 
 class Playlist
 {
-public:
-    int id;
     string name;
     vector<Song *> songs;
 
-    Playlist(int id, string name, vector<Song *> songs)
-    {
-        this->id;
-        this->name = name;
-        this->songs = songs;
-    }
+public:
+    Playlist(string name) : name(name) {}
 
     void addSong(Song *song)
     {
         songs.push_back(song);
     }
+
+    vector<Song *> &getSongs()
+    {
+        return songs;
+    }
+
+    int size() { return songs.size(); }
+
+    string getName() { return name; }
 };
 
-class PlaylistManager
-{
-    unordered_map<int, Playlist *> playlists;
-    static int index;
-    static PlaylistManager *instance;
+/* ================= DEVICE APIs ================= */
 
-    PlaylistManager()
-    {
-    }
-
-public:
-    static PlaylistManager *getInstance()
-    {
-        if (!instance)
-        {
-            instance = new PlaylistManager();
-        }
-
-        return instance;
-    }
-
-    void addPlaylist(string name, vector<Song *> songs)
-    {
-        Playlist *playlist = new Playlist(index, name, songs);
-
-        playlists[index] = playlist;
-
-        index++;
-    }
-
-    void song(int id, Song *song)
-    {
-        Playlist *playlist = playlists[id];
-        playlist->addSong(song);
-    }
-};
-int PlaylistManager::index = 0;
-PlaylistManager *PlaylistManager::instance = nullptr;
-
-class BlueToothAPI
+class BluetoothAPI
 {
 public:
-    void playSongViaBluetooth(Song *song)
+    void play(string path)
     {
-        cout << "PLAYING SONG IN BLUETOOTH" << " " << song->name << "..........";
+        cout << "Playing " << path << " via Bluetooth\n";
     }
 };
 
-class EarPhoneAPI
+class HeadphoneAPI
 {
 public:
-    void playSongViaEarPhone(Song *song)
+    void play(string path)
     {
-        cout << "PLAYING SONG IN EARPHONE" << " " << song->name << "..........";
+        cout << "Playing " << path << " via Headphones\n";
     }
 };
 
-class PhoneAPI
-{
-public:
-    void playSongViaPhone(Song *song)
-    {
-        cout << "PLAYING SONG IN PHONE" << " " << song->name << "..........";
-    }
-};
-
-// ADAPTER
+/* ================= ADAPTER ================= */
 
 class AudioDevice
 {
 public:
-    virtual void playSong(Song *song);
+    virtual void playSong(Song *song) = 0;
+    virtual ~AudioDevice() = default;
 };
 
-class BlueToothDevice : public AudioDevice
+class BluetoothDevice : public AudioDevice
 {
-    BlueToothAPI *api;
+    BluetoothAPI api;
 
 public:
-    BlueToothDevice()
+    void playSong(Song *song) override
     {
-        api = new BlueToothAPI();
-    }
-
-    void playSong(Song *song)
-    {
-        api->playSongViaBluetooth(song);
+        api.play(song->getFilePath());
     }
 };
 
-class EarPhoneDevice : public AudioDevice
+class HeadphoneDevice : public AudioDevice
 {
-    EarPhoneAPI *api;
+    HeadphoneAPI api;
 
 public:
-    EarPhoneDevice()
+    void playSong(Song *song) override
     {
-        api = new EarPhoneAPI();
-    }
-
-    void playSong(Song *song)
-    {
-        api->playSongViaEarPhone(song);
-    }
-};
-
-class PhoneDevice : public AudioDevice
-{
-    PhoneAPI *api;
-
-public:
-    PhoneDevice()
-    {
-        api = new PhoneAPI();
-    }
-
-    void playSong(Song *song)
-    {
-        api->playSongViaPhone(song);
+        api.play(song->getFilePath());
     }
 };
 
 enum class DeviceType
 {
-    Phone,
-    BLueTooth,
-    EarPhone
+    BLUETOOTH,
+    HEADPHONE
 };
+
+/* ================= FACTORY ================= */
 
 class DeviceFactory
 {
-    static DeviceFactory *instance;
-    DeviceFactory()
-    {
-    }
-    static DeviceFactory *getInstance()
-    {
-        if (!instance)
-        {
-            instance = new DeviceFactory();
-        }
-        return instance;
-    }
-
 public:
-    AudioDevice *createDevice(DeviceType type)
+    static AudioDevice *createDevice(DeviceType type)
     {
         switch (type)
         {
-        case DeviceType::Phone:
-            return new PhoneDevice();
-
-        case DeviceType::EarPhone:
-            return new EarPhoneDevice();
-
-        case DeviceType::BLueTooth:
-            return new BlueToothDevice();
-
+        case DeviceType::BLUETOOTH:
+            return new BluetoothDevice();
+        case DeviceType::HEADPHONE:
+            return new HeadphoneDevice();
         default:
-            throw runtime_error("Type not defined");
+            throw runtime_error("Invalid device");
         }
     }
 };
 
-class PlayListStrategy
+/* ================= DEVICE MANAGER ================= */
+
+class DeviceManager
 {
+    AudioDevice *currentDevice = nullptr;
+
+    DeviceManager() {}
+
+public:
+    static DeviceManager &getInstance()
+    {
+        static DeviceManager instance;
+        return instance;
+    }
+
+    void connect(DeviceType type)
+    {
+        currentDevice = DeviceFactory::createDevice(type);
+        cout << "Device connected\n";
+    }
+
+    AudioDevice *getDevice()
+    {
+        if (!currentDevice)
+            throw runtime_error("No device connected");
+        return currentDevice;
+    }
 };
 
-class RandomPlaylistStrategy : public PlayListStrategy
-{
-};
+// class DeviceManager {
+// private:
+//     static DeviceManager* instance;
 
-class SequentialStrategy : public PlayListStrategy
-{
-};
+//     DeviceManager() {}
 
-class CustomPlaylistStrategy : public PlayListStrategy
-{
-};
+// public:
+//     static DeviceManager* getInstance() {
+//         if (instance == nullptr) {
+//             instance = new DeviceManager();
+//         }
+//         return instance;
+//     }
+// };
 
-enum class AudioStatus
-{
-    PLAYING,
-    PAUSE
-};
+/* ================= AUDIO ENGINE ================= */
 
 class AudioEngine
 {
     Song *currentSong = nullptr;
-    AudioStatus status = nullptr;
+    bool paused = false;
 
 public:
-    play(Song *song)
+    void play(AudioDevice *device, Song *song)
     {
+        if (!song)
+            throw runtime_error("Song null");
+
+        currentSong = song;
+        paused = false;
+
+        cout << "Now playing: " << song->getTitle() << "\n";
+        device->playSong(song);
     }
 
-    pause()
+    void pause()
     {
+        if (!currentSong)
+            throw runtime_error("No song playing");
+
+        paused = true;
+        cout << "Paused: " << currentSong->getTitle() << "\n";
     }
 };
 
-class Spotify
+/* ================= STRATEGY ================= */
+
+class PlayStrategy
 {
+public:
+    virtual void setPlaylist(Playlist *playlist) = 0;
+    virtual bool hasNext() = 0;
+    virtual Song *next() = 0;
+    virtual ~PlayStrategy() = default;
 };
+
+class SequentialStrategy : public PlayStrategy
+{
+    Playlist *playlist = nullptr;
+    int index = 0;
+
+public:
+    void setPlaylist(Playlist *p) override
+    {
+        playlist = p;
+        index = 0;
+    }
+
+    bool hasNext() override
+    {
+        return playlist && index < playlist->size();
+    }
+
+    Song *next() override
+    {
+        return playlist->getSongs()[index++];
+    }
+};
+
+class RandomStrategy : public PlayStrategy
+{
+    vector<Song *> songs;
+
+public:
+    void setPlaylist(Playlist *p) override
+    {
+        songs = p->getSongs();
+        shuffle(
+            songs.begin(),
+            songs.end(),
+            mt19937(random_device()()));
+    }
+
+    bool hasNext() override
+    {
+        return !songs.empty();
+    }
+
+    Song *next() override
+    {
+        Song *s = songs.back();
+        songs.pop_back();
+        return s;
+    }
+};
+
+/* ================= PLAYLIST MANAGER ================= */
+
+class PlaylistManager
+{
+    unordered_map<string, Playlist *> playlists;
+
+    PlaylistManager() {}
+
+public:
+    static PlaylistManager &getInstance()
+    {
+        static PlaylistManager instance;
+        return instance;
+    }
+
+    void createPlaylist(string name)
+    {
+        playlists[name] = new Playlist(name);
+    }
+
+    void addSong(string playlistName, Song *song)
+    {
+        playlists[playlistName]->addSong(song);
+    }
+
+    Playlist *getPlaylist(string name)
+    {
+        return playlists[name];
+    }
+};
+
+/* ================= SPOTIFY FACADE ================= */
+
+class SpotifyFacade
+{
+    AudioEngine engine;
+    PlayStrategy *strategy = nullptr;
+
+    SpotifyFacade() {}
+
+public:
+    static SpotifyFacade &getInstance()
+    {
+        static SpotifyFacade instance;
+        return instance;
+    }
+
+    void connectDevice(DeviceType type)
+    {
+        DeviceManager::getInstance().connect(type);
+    }
+
+    void setStrategy(PlayStrategy *s)
+    {
+        strategy = s;
+    }
+
+    void playSong(Song *song)
+    {
+        engine.play(DeviceManager::getInstance().getDevice(), song);
+    }
+
+    void playPlaylist(Playlist *playlist)
+    {
+        strategy->setPlaylist(playlist);
+
+        while (strategy->hasNext())
+        {
+            Song *song = strategy->next();
+            playSong(song);
+        }
+    }
+
+    void pause()
+    {
+        engine.pause();
+    }
+};
+
+/* ================= MAIN ================= */
 
 int main()
 {
-    cout << "Your code starts..........";
+    Song *s1 = new Song("Kesariya", "Arijit", "/music/kesariya.mp3");
+    Song *s2 = new Song("Tum Hi Ho", "Arijit", "/music/tumh.mp3");
+    Song *s3 = new Song("Zinda", "Siddharth", "/music/zinda.mp3");
+
+    PlaylistManager &pm = PlaylistManager::getInstance();
+    pm.createPlaylist("Bollywood");
+    pm.addSong("Bollywood", s1);
+    pm.addSong("Bollywood", s2);
+    pm.addSong("Bollywood", s3);
+
+    SpotifyFacade &spotify = SpotifyFacade::getInstance();
+
+    spotify.connectDevice(DeviceType::BLUETOOTH);
+
+    cout << "\nSequential:\n";
+    spotify.setStrategy(new SequentialStrategy());
+    spotify.playPlaylist(pm.getPlaylist("Bollywood"));
+
+    cout << "\nRandom:\n";
+    spotify.setStrategy(new RandomStrategy());
+    spotify.playPlaylist(pm.getPlaylist("Bollywood"));
+
+    spotify.pause();
+
+    return 0;
 }
