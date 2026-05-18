@@ -8,3 +8,36 @@
 HOMEWORK
 1. There can be different ways/strategy of retry mechnaism. Example- Linear retry, exponential back off
 2. Try adding recurring payment flow/subscrption
+
+
+
+
+------------------------------------------------------------------------------------------------------
+PaymentRequest
+PaymentResult
+PaymentMethod (Strategy)
+  - UPI
+  - Card
+  - NetBanking
+PaymentGateway (Template)
+  - Razorpay
+  - Stripe
+ExternalApi adapters
+  - RazorpayApi
+  - StripeApi
+RetryProxy
+GatewayFactory
+PaymentService
+
+
+
+
+
+
+
+Controller
+   -> PaymentService
+   -> PaymentMethodStrategy
+   -> PaymentGatewayProxy
+   -> Gateway
+   -> External API
