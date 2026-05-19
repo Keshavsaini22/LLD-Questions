@@ -259,3 +259,308 @@ int main()
 // entities-> Notification->sub,message, sender, receiver,
 // retry->  proxy pattern
 // different channels-> strategy
+
+//======================================================================================
+
+#include <iostream>
+#include <vector>
+#include <memory>
+#include <algorithm>
+#include <ctime>
+
+using namespace std;
+
+// ======================= ENUMS =======================
+
+enum class NotificationStatus {
+    PENDING,
+    SENT,
+    FAILED
+};
+
+// ======================= NOTIFICATION =======================
+
+class Notification {
+protected:
+    string sender;
+    string receiver;
+    string subject;
+    string body;
+    NotificationStatus status;
+
+public:
+    Notification(string sender,
+                 string receiver,
+                 string subject,
+                 string body)
+        : sender(sender),
+          receiver(receiver),
+          subject(subject),
+          body(body),
+          status(NotificationStatus::PENDING) {}
+
+    virtual ~Notification() = default;
+
+    virtual string getBody() const {
+        return body;
+    }
+
+    virtual string getSender() const {
+        return sender;
+    }
+
+    virtual string getReceiver() const {
+        return receiver;
+    }
+
+    virtual string getSubject() const {
+        return subject;
+    }
+
+    NotificationStatus getStatus() const {
+        return status;
+    }
+
+    void setStatus(NotificationStatus newStatus) {
+        status = newStatus;
+    }
+};
+
+class SimpleNotification : public Notification {
+public:
+    SimpleNotification(string sender,
+                       string receiver,
+                       string subject,
+                       string body)
+        : Notification(sender, receiver, subject, body) {}
+};
+
+// ======================= DECORATOR =======================
+
+class NotificationDecorator : public Notification {
+protected:
+    shared_ptr<Notification> wrappedNotification;
+
+public:
+    NotificationDecorator(shared_ptr<Notification> notification)
+        : Notification("", "", "", ""),
+          wrappedNotification(notification) {}
+
+    string getSender() const override {
+        return wrappedNotification->getSender();
+    }
+
+    string getReceiver() const override {
+        return wrappedNotification->getReceiver();
+    }
+
+    string getSubject() const override {
+        return wrappedNotification->getSubject();
+    }
+};
+
+class TimestampDecorator : public NotificationDecorator {
+public:
+    TimestampDecorator(shared_ptr<Notification> notification)
+        : NotificationDecorator(notification) {}
+
+    string getBody() const override {
+        time_t now = time(nullptr);
+        string timestamp = ctime(&now);
+        timestamp.pop_back(); // remove newline
+        return "[" + timestamp + "] " + wrappedNotification->getBody();
+    }
+};
+
+class SignatureDecorator : public NotificationDecorator {
+    string signature;
+
+public:
+    SignatureDecorator(shared_ptr<Notification> notification,
+                       string signature)
+        : NotificationDecorator(notification),
+          signature(signature) {}
+
+    string getBody() const override {
+        return wrappedNotification->getBody() + "\n-- " + signature;
+    }
+};
+
+// ======================= STRATEGY =======================
+
+class NotificationChannel {
+public:
+    virtual ~NotificationChannel() = default;
+    virtual bool send(shared_ptr<Notification> notification) = 0;
+};
+
+class EmailChannel : public NotificationChannel {
+public:
+    bool send(shared_ptr<Notification> notification) override {
+        cout << "Sending EMAIL to "
+             << notification->getReceiver() << endl;
+        return true;
+    }
+};
+
+class SMSChannel : public NotificationChannel {
+public:
+    bool send(shared_ptr<Notification> notification) override {
+        cout << "Sending SMS to "
+             << notification->getReceiver() << endl;
+        return true;
+    }
+};
+
+class PushChannel : public NotificationChannel {
+public:
+    bool send(shared_ptr<Notification> notification) override {
+        cout << "Sending PUSH notification to "
+             << notification->getReceiver() << endl;
+        return true;
+    }
+};
+
+// ======================= OBSERVER =======================
+
+class IObserver {
+public:
+    virtual ~IObserver() = default;
+    virtual void update(shared_ptr<Notification> notification) = 0;
+};
+
+class Logger : public IObserver {
+public:
+    void update(shared_ptr<Notification> notification) override {
+        cout << "LOG: Notification triggered -> "
+             << notification->getBody() << endl;
+    }
+};
+
+class NotificationEngine : public IObserver {
+    vector<shared_ptr<NotificationChannel>> channels;
+
+public:
+    void addChannel(shared_ptr<NotificationChannel> channel) {
+        channels.push_back(channel);
+    }
+
+    void update(shared_ptr<Notification> notification) override {
+        bool success = true;
+
+        for (auto& channel : channels) {
+            success &= channel->send(notification);
+        }
+
+        if (success) {
+            notification->setStatus(NotificationStatus::SENT);
+            cout << "All notifications sent successfully.\n";
+        } else {
+            notification->setStatus(NotificationStatus::FAILED);
+            cout << "Notification sending failed.\n";
+        }
+    }
+};
+
+// ======================= OBSERVABLE =======================
+
+class Observable {
+    vector<shared_ptr<IObserver>> observers;
+
+public:
+    void addObserver(shared_ptr<IObserver> observer) {
+        observers.push_back(observer);
+    }
+
+    void removeObserver(shared_ptr<IObserver> observer) {
+        observers.erase(
+            remove(observers.begin(), observers.end(), observer),
+            observers.end()
+        );
+    }
+
+    void notify(shared_ptr<Notification> notification) {
+        for (auto& observer : observers) {
+            observer->update(notification);
+        }
+    }
+};
+
+// ======================= SINGLETON SERVICE =======================
+
+class NotificationService {
+private:
+    Observable observable;
+    vector<shared_ptr<Notification>> notificationHistory;
+
+    NotificationService() = default;
+
+public:
+    NotificationService(const NotificationService&) = delete;
+    NotificationService& operator=(const NotificationService&) = delete;
+
+    static NotificationService& getInstance() {
+        static NotificationService instance;
+        return instance;
+    }
+
+    void addObserver(shared_ptr<IObserver> observer) {
+        observable.addObserver(observer);
+    }
+
+    void sendNotification(shared_ptr<Notification> notification) {
+        notificationHistory.push_back(notification);
+        observable.notify(notification);
+    }
+
+    void showHistory() {
+        cout << "\n===== Notification History =====\n";
+        for (auto& notification : notificationHistory) {
+            cout << notification->getSubject()
+                 << " -> "
+                 << notification->getBody()
+                 << endl;
+        }
+    }
+};
+
+// ======================= MAIN =======================
+
+int main() {
+
+    NotificationService& service =
+        NotificationService::getInstance();
+
+    // observers
+    auto logger = make_shared<Logger>();
+
+    auto engine = make_shared<NotificationEngine>();
+    engine->addChannel(make_shared<EmailChannel>());
+    engine->addChannel(make_shared<SMSChannel>());
+    engine->addChannel(make_shared<PushChannel>());
+
+    service.addObserver(logger);
+    service.addObserver(engine);
+
+    // create notification
+    shared_ptr<Notification> notification =
+        make_shared<SimpleNotification>(
+            "Amazon",
+            "user@gmail.com",
+            "Order Update",
+            "Your order has been shipped"
+        );
+
+    // decorators
+    notification = make_shared<TimestampDecorator>(notification);
+    notification = make_shared<SignatureDecorator>(
+        notification,
+        "Amazon Team"
+    );
+
+    service.sendNotification(notification);
+
+    service.showHistory();
+
+    return 0;
+}
