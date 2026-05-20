@@ -564,3 +564,440 @@ int main() {
 
     return 0;
 }
+
+
+//================================================================================================================
+
+#include <iostream>
+#include <vector>
+#include <memory>
+#include <algorithm>
+#include <ctime>
+#include <unordered_map>
+
+using namespace std;
+
+// ======================= ENUMS =======================
+
+enum class NotificationStatus {
+    PENDING,
+    SENT,
+    FAILED
+};
+
+enum class ChannelType {
+    EMAIL,
+    SMS,
+    PUSH
+};
+
+// ======================= NOTIFICATION =======================
+
+class Notification {
+protected:
+    string sender;
+    string receiver;
+    string subject;
+    string body;
+
+    NotificationStatus status;
+
+    vector<ChannelType> selectedChannels;
+
+public:
+    Notification(string sender,
+                 string receiver,
+                 string subject,
+                 string body,
+                 vector<ChannelType> channels)
+        : sender(sender),
+          receiver(receiver),
+          subject(subject),
+          body(body),
+          selectedChannels(channels),
+          status(NotificationStatus::PENDING) {}
+
+    virtual ~Notification() = default;
+
+    virtual string getBody() const {
+        return body;
+    }
+
+    virtual string getSender() const {
+        return sender;
+    }
+
+    virtual string getReceiver() const {
+        return receiver;
+    }
+
+    virtual string getSubject() const {
+        return subject;
+    }
+
+    vector<ChannelType> getChannels() const {
+        return selectedChannels;
+    }
+
+    NotificationStatus getStatus() const {
+        return status;
+    }
+
+    void setStatus(NotificationStatus newStatus) {
+        status = newStatus;
+    }
+};
+
+class SimpleNotification : public Notification {
+public:
+    SimpleNotification(string sender,
+                       string receiver,
+                       string subject,
+                       string body,
+                       vector<ChannelType> channels)
+        : Notification(sender,
+                       receiver,
+                       subject,
+                       body,
+                       channels) {}
+};
+
+// ======================= DECORATOR =======================
+
+class NotificationDecorator : public Notification {
+protected:
+    shared_ptr<Notification> wrappedNotification;
+
+public:
+    NotificationDecorator(shared_ptr<Notification> notification)
+        : Notification("", "", "", "", {}),
+          wrappedNotification(notification) {}
+
+    string getSender() const override {
+        return wrappedNotification->getSender();
+    }
+
+    string getReceiver() const override {
+        return wrappedNotification->getReceiver();
+    }
+
+    string getSubject() const override {
+        return wrappedNotification->getSubject();
+    }
+
+    vector<ChannelType> getChannels() const {
+        return wrappedNotification->getChannels();
+    }
+};
+
+class TimestampDecorator : public NotificationDecorator {
+public:
+    TimestampDecorator(shared_ptr<Notification> notification)
+        : NotificationDecorator(notification) {}
+
+    string getBody() const override {
+
+        time_t now = time(nullptr);
+
+        string timestamp = ctime(&now);
+
+        timestamp.pop_back();
+
+        return "[" + timestamp + "] "
+               + wrappedNotification->getBody();
+    }
+};
+
+class SignatureDecorator : public NotificationDecorator {
+
+    string signature;
+
+public:
+    SignatureDecorator(shared_ptr<Notification> notification,
+                       string signature)
+        : NotificationDecorator(notification),
+          signature(signature) {}
+
+    string getBody() const override {
+
+        return wrappedNotification->getBody()
+               + "\n-- "
+               + signature;
+    }
+};
+
+// ======================= STRATEGY =======================
+
+class NotificationChannel {
+public:
+    virtual ~NotificationChannel() = default;
+
+    virtual bool send(shared_ptr<Notification> notification) = 0;
+};
+
+class EmailChannel : public NotificationChannel {
+public:
+    bool send(shared_ptr<Notification> notification) override {
+
+        cout << "Sending EMAIL to "
+             << notification->getReceiver()
+             << endl;
+
+        return true;
+    }
+};
+
+class SMSChannel : public NotificationChannel {
+public:
+    bool send(shared_ptr<Notification> notification) override {
+
+        cout << "Sending SMS to "
+             << notification->getReceiver()
+             << endl;
+
+        return true;
+    }
+};
+
+class PushChannel : public NotificationChannel {
+public:
+    bool send(shared_ptr<Notification> notification) override {
+
+        cout << "Sending PUSH notification to "
+             << notification->getReceiver()
+             << endl;
+
+        return true;
+    }
+};
+
+// ======================= OBSERVER =======================
+
+class IObserver {
+public:
+    virtual ~IObserver() = default;
+
+    virtual void update(shared_ptr<Notification> notification) = 0;
+};
+
+class Logger : public IObserver {
+public:
+    void update(shared_ptr<Notification> notification) override {
+
+        cout << "LOG: "
+             << notification->getBody()
+             << endl;
+    }
+};
+
+// ======================= NOTIFICATION ENGINE =======================
+
+class NotificationEngine : public IObserver {
+
+    unordered_map<
+        ChannelType,
+        shared_ptr<NotificationChannel>
+    > channelMap;
+
+public:
+
+    void registerChannel(ChannelType type,
+                         shared_ptr<NotificationChannel> strategy) {
+
+        channelMap[type] = strategy;
+    }
+
+    void update(shared_ptr<Notification> notification) override {
+
+        bool success = true;
+
+        vector<ChannelType> channels =
+            notification->getChannels();
+
+        for (auto channelType : channels) {
+
+            if (channelMap.find(channelType)
+                != channelMap.end()) {
+
+                success &=
+                    channelMap[channelType]
+                        ->send(notification);
+            }
+        }
+
+        if (success) {
+
+            notification->setStatus(
+                NotificationStatus::SENT
+            );
+
+            cout << "Notification sent successfully.\n";
+
+        } else {
+
+            notification->setStatus(
+                NotificationStatus::FAILED
+            );
+
+            cout << "Notification failed.\n";
+        }
+    }
+};
+
+// ======================= OBSERVABLE =======================
+
+class Observable {
+
+    vector<shared_ptr<IObserver>> observers;
+
+public:
+
+    void addObserver(shared_ptr<IObserver> observer) {
+
+        observers.push_back(observer);
+    }
+
+    void notify(shared_ptr<Notification> notification) {
+
+        for (auto& observer : observers) {
+
+            observer->update(notification);
+        }
+    }
+};
+
+// ======================= SINGLETON SERVICE =======================
+
+class NotificationService {
+
+private:
+
+    Observable observable;
+
+    vector<shared_ptr<Notification>>
+        notificationHistory;
+
+    NotificationService() = default;
+
+public:
+
+    NotificationService(
+        const NotificationService&
+    ) = delete;
+
+    NotificationService& operator=(
+        const NotificationService&
+    ) = delete;
+
+    static NotificationService&
+    getInstance() {
+
+        static NotificationService instance;
+
+        return instance;
+    }
+
+    void addObserver(shared_ptr<IObserver> observer) {
+
+        observable.addObserver(observer);
+    }
+
+    void sendNotification(
+        shared_ptr<Notification> notification
+    ) {
+
+        notificationHistory.push_back(notification);
+
+        observable.notify(notification);
+    }
+
+    void showHistory() {
+
+        cout << "\n===== Notification History =====\n";
+
+        for (auto& notification : notificationHistory) {
+
+            cout << notification->getSubject()
+                 << " -> "
+                 << notification->getBody()
+                 << endl;
+        }
+    }
+};
+
+// ======================= MAIN =======================
+
+int main() {
+
+    NotificationService& service =
+        NotificationService::getInstance();
+
+    // LOGGER
+
+    auto logger = make_shared<Logger>();
+
+    // ENGINE
+
+    auto engine =
+        make_shared<NotificationEngine>();
+
+    engine->registerChannel(
+        ChannelType::EMAIL,
+        make_shared<EmailChannel>()
+    );
+
+    engine->registerChannel(
+        ChannelType::SMS,
+        make_shared<SMSChannel>()
+    );
+
+    engine->registerChannel(
+        ChannelType::PUSH,
+        make_shared<PushChannel>()
+    );
+
+    service.addObserver(logger);
+    service.addObserver(engine);
+
+    // USER SELECTS CHANNELS
+
+    vector<ChannelType> selectedChannels = {
+        ChannelType::EMAIL,
+        ChannelType::SMS
+    };
+
+    // CREATE NOTIFICATION
+
+    shared_ptr<Notification> notification =
+
+        make_shared<SimpleNotification>(
+            "Amazon",
+            "user@gmail.com",
+            "Order Update",
+            "Your order has been shipped",
+            selectedChannels
+        );
+
+    // DECORATORS
+
+    notification =
+        make_shared<TimestampDecorator>(
+            notification
+        );
+
+    notification =
+        make_shared<SignatureDecorator>(
+            notification,
+            "Amazon Team"
+        );
+
+    // SEND
+
+    service.sendNotification(notification);
+
+    service.showHistory();
+
+    return 0;
+}
+
+// for selecting channels, we can have a UI where user can select the channels and then we can pass that to notification object. This way we can avoid having multiple notification objects for different channels.
