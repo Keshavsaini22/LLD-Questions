@@ -138,15 +138,11 @@ class InventoryStore
 public:
     virtual ~InventoryStore() = default;
 
-    virtual void addProduct(
-        shared_ptr<Product> product,
-        int quantity) = 0;
+    virtual void addProduct(shared_ptr<Product> product,int quantity) = 0;
 
-    virtual shared_ptr<InventoryItem>
-    getInventory(int productId) = 0;
+    virtual shared_ptr<InventoryItem> getInventory(int productId) = 0;
 
-    virtual vector<shared_ptr<InventoryItem>>
-    getAllInventory() = 0;
+    virtual vector<shared_ptr<InventoryItem>> getAllInventory() = 0;
 };
 
 // =========================================
@@ -158,10 +154,7 @@ class InMemoryInventoryStore
 {
 
 private:
-    unordered_map<
-        int,
-        shared_ptr<InventoryItem>>
-        inventoryMap;
+    unordered_map<int, shared_ptr<InventoryItem>> inventoryMap;
 
 public:
     void addProduct(
