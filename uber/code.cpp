@@ -1,4 +1,5 @@
 // why driver is geting saved in ride request and also in ride? why duplicate data is being stored?
+// Use normal values for small types, const T& for large objects, unique_ptr for ownership, and shared_ptr only when ownership truly needs to be shared
 #include <memory>
 #include <unordered_map>
 #include <mutex>
