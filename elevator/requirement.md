@@ -1,0 +1,2 @@
+An elevator system manages multiple elevators serving different floors in a building. When someone requests an elevator, the system decides which one to dispatch. Once inside, passengers select their destination floors. The system needs to move elevators efficiently while handling multiple concurrent requests. when user want to request the lift he will simply has to give direction to move down or up. 
+
