@@ -508,6 +508,14 @@ public:
     }
 };
 
+// Instead of:
+// processRequests();
+// each elevator should run independently:
+// while (true)
+// {
+//     step();
+// }
+
 //======================================================
 // ELEVATOR CONTROLLER
 //======================================================
