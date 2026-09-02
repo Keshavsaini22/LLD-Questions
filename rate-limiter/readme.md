@@ -110,3 +110,183 @@ rate_limit:user456:29384752 → 41   TTL: 12 sec
 rate_limit:user789:29384752 → 99   TTL: 12 sec
 
 -------------------------------------------------------------------------------------------------------------------
+
+SLIDING WINDOW LOG
+Instead of storing just a counter, store timestamps.
+For:5 requests / minute
+we maintain:timestamps = [t1, t2, t3, ...]
+When a request arrives at now:
+Remove timestamps older than: now - 60 seconds
+Then:
+if timestamps.size < 5:
+    add(now)
+    ALLOW
+else:
+    REJECT
+
+Use Queue / Deque-because timestamps arrive in sorted order. Deque<Long> timestamps;
+Operations:
+push_back(now)
+pop_front()
+front()
+size()
+All O(1).
+
+---------------------------------------------------------------------------------------------------
+
+SLIDING WINDOW COUNTER (Fixed window+sliding window log)
+Hybrid approach and approximation approach- Cloudflare uses this
+Instead of storing every timestamp:
+previous window count
+current window count
+
+Example:
+Limit = 100/min
+Suppose:
+Previous minute = 80
+Current minute = 30
+If we're 25% into the current window:
+estimated count =
+80 × 75% + 30
+= 60 + 30
+= 90
+Therefore:90 < 100 → allow.
+
+It uses much less memory than a sliding log but is an approximation.
+
+---------------------------------------------------------------------------------------------------------
+
+Token bucket
+Imagine a bucket containing tokens.
+
+                 ┌─────────────┐
+                 │ ● ● ● ● ●   │
+                 │ ● ● ● ●     │
+                 │             │
+                 └─────────────┘
+Each request needs: 1 token
+Tokens are continuously added at a fixed rate.
+Suppose:
+capacity = 10 tokens
+refill rate = 2 tokens/sec
+Initially:
+10 tokens
+Request arrives:
+token = 1
+Bucket:9
+Another request:8
+
+Suppose the bucket has: 3 tokens and no requests happen for 2 seconds.
+Refill: 2 tokens/sec × 2 sec = 4 tokens
+So:
+3 + 4 = 7
+But bucket capacity is 10.
+Therefore:
+tokens = min(capacity, tokens + refill)
+
+Let:
+T = current timestamp
+last = last refill timestamp
+R = refill rate
+C = bucket capacity
+tokens = current token count
+
+Elapsed time:
+elapsed = T - last
+New tokens: newTokens = elapsed × R
+Updated tokens: tokens = min(C, tokens + newTokens)
+Then:
+if tokens >= 1:
+    tokens -= 1
+    ALLOW
+else:
+    REJECT
+
+Code-
+public class TokenBucket {
+
+    private final double capacity;
+    private final double refillRate;
+
+    private double tokens;
+    private long lastRefillTime;
+
+    public TokenBucket(double capacity, double refillRate) {
+        this.capacity = capacity;
+        this.refillRate = refillRate;
+
+        this.tokens = capacity;
+        this.lastRefillTime = System.nanoTime();
+    }
+
+    public synchronized boolean allow() {
+
+        refill();
+
+        if (tokens >= 1.0) {
+            tokens -= 1.0;
+            return true;
+        }
+
+        return false;
+    }
+
+    private void refill() {
+
+        long now = System.nanoTime();
+
+        double elapsedSeconds =
+                (now - lastRefillTime) / 1_000_000_000.0;
+
+        double newTokens = elapsedSeconds * refillRate;
+
+        tokens = Math.min(
+                capacity,
+                tokens + newTokens
+        );
+
+        lastRefillTime = now;
+    }
+}
+
+
+Multiple users-
+public class TokenBucketRateLimiter
+        implements RateLimiter {
+
+    private final Map<String, TokenBucket> buckets =
+            new ConcurrentHashMap<>();
+
+    private final int capacity;
+    private final double refillRate;
+
+    public TokenBucketRateLimiter(
+            int capacity,
+            double refillRate) {
+
+        this.capacity = capacity;
+        this.refillRate = refillRate;
+    }
+
+    @Override
+    public boolean allow(String key) {
+
+        TokenBucket bucket = buckets.computeIfAbsent(
+                key,
+                k -> new TokenBucket(
+                        capacity,
+                        refillRate
+                )
+        );
+
+        return bucket.allow();
+    }
+}
+
+Usage:
+RateLimiter limiter = new TokenBucketRateLimiter(5, 1);
+limiter.allow("user123");
+--------------------------------------------------------------------------------------------------------
+
+Leaky Bucket
+Bucket de vich meri requests add hoyi jani h and i will have fixed size queue after bucket jis vicho requests leak hongiya then i wil process it
