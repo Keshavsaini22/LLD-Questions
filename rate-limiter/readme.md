@@ -286,7 +286,177 @@ public class TokenBucketRateLimiter
 Usage:
 RateLimiter limiter = new TokenBucketRateLimiter(5, 1);
 limiter.allow("user123");
+
 --------------------------------------------------------------------------------------------------------
 
 Leaky Bucket
 Bucket de vich meri requests add hoyi jani h and i will have fixed size queue after bucket jis vicho requests leak hongiya then i wil process it
+Requests
+   |
+   v
++---------+
+| Queue   |
++---------+
+    |
+    | fixed rate
+    v
+ Backend
+
+
+------------------------------------------------------------------------------------------------------------
+Which one would you use?  - It depends on whether we need strict rolling-window semantics, burst tolerance, or traffic smoothing. For a typical API gateway, I'd use token bucket because it gives O(1) state per key, supports controlled bursts, and can be implemented efficiently in a distributed system. If strict sliding-window semantics are required, I'd consider a sliding-window counter or log.
+Dont directly say that Token bucket is the best
+
+------------------------------------------------------------------------------------------------------------
+
+Strategy Pattern in LLD
+                 RateLimiter
+                     |
+          +----------+----------+
+          |          |          |
+          v          v          v
+     FixedWindow  TokenBucket  SlidingWindow
+
+--------------------------------------------------------------------------------------------------------------
+HLD Architecture
+
+                  Internet
+                     |
+                     v
+               Load Balancer
+                     |
+          +----------+----------+
+          |          |          |
+          v          v          v
+       API-1      API-2      API-3
+          |          |          |
+          +----------+----------+
+                     |
+                     v
+              Rate Limiter
+                     |
+                     v
+                  Redis
+
+Why Redis? Because Redis provides:
+Very low latency
+In-memory storage
+Atomic commands
+Lua scripting
+TTL
+Replication
+Cluster support
+
+------------------------------------------------------------------------------------------------------------------
+
+Rate Limit Headers
+A good API often returns information such as:
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 37
+X-RateLimit-Reset: 1720000000
+
+When rejected:
+HTTP/1.1 429 Too Many Requests
+Retry-After: 3
+
+This helps clients back off.
+
+------------------------------------------------------------------------------------------------------------------
+
+What Happens When Rate Limiter Is Down?
+Suppose-
+API
+ |
+ v
+Rate Limiter
+ |
+ X
+Redis unavailable
+
+Do we:
+Fail open? Allow request.
+Redis failure
+    |
+    v
+allow
+
+Pros:
+Availability
+Users aren't incorrectly blocked
+Cons:
+Backend can become overloaded
+Attackers may exploit the failure
+
+Fail closed? Reject request.
+Redis failure
+    |
+    v
+reject
+
+Pros:
+Protects backend
+Cons:
+Rate limiter outage becomes application outage
+
+There isn't one universally correct answer.
+For a critical backend, you might choose:
+Fail closed for highly expensive/protected operations, but use a local emergency limiter or bounded fail-open policy for less critical traffic.
+
+------------------------------------------------------------------------------------------------------------------
+
+What if Redis dies? use local emergency limiter.This isn't perfectly globally accurate, but protects the service.
+The trade-off is:
+Consistency <-> Availability
+
+Possible architecture:
+
+                Request
+                   |
+                   v
+             API Gateway
+                   |
+            +------+------+
+            |             |
+            v             v
+      Local limiter     Redis
+
+------------------------------------------------------------------------------------------------------------------
+
+One Redis instance won't necessarily be enough-> use Redis Cluster
+We can shard:
+             Redis Cluster
+          /       |       \
+       shard1   shard2   shard3
+For user-based rate limiting: hash(userId) -> shard
+
+------------------------------------------------------------------------------------------------------------------
+
+Hot Keys - This is a classic distributed-systems problem.
+Suppose one extremely popular API key: user = celebrity
+generates: 500K requests/sec
+All requests hit: rate_limit:celebrity
+One Redis shard becomes hot.
+Even though the cluster has 100 nodes, one key maps to one shard.
+
+Solutions depend on semantics:
+Local pre-limiting
+Hierarchical limiting- multilevel limiting
+Partitioning/sharding state where possible
+Request coalescing
+Dedicated handling for exceptionally hot identities
+Approximate/global limits where exactness isn't necessary
+
+But splitting one user's bucket across many nodes is not trivial because it can break the exact global limit.
+
+------------------------------------------------------------------------------------------------------------------
+
+Strong vs Approximate Rate Limiting
+Ask:Do we need mathematically exact enforcement?
+For some APIs:100 requests/minute exactly matters.
+For others:approximately 100 requests/minute is sufficient.
+
+Approximate approaches can dramatically improve:
+scalability
+latency
+memory
+availability 
