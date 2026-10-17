@@ -1,3 +1,5 @@
+https://algo.monster/courses/lld/lld_rate_limiter
+
 Rate limiter- A rate limiter answers one fundamental question: “Should I allow this request right now?”
 Usually the rejected request gets: HTTP 429 Too Many Requests
 
