@@ -352,7 +352,8 @@ private:
 
     unordered_map<string, unique_ptr<Ticket>> activeTickets;
 
-    mutex ticketMutex;
+    mutex ticketMutex; //because multiple threads can enter and exit the parking lot simultaneously and tickets 
+    //are in unordered_map, we need to protect it with a mutex to avoid data races and ensure thread safety.
 
 public:
     explicit ParkingLot(
