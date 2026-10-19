@@ -3,187 +3,215 @@
 #include <bits/stdc++.h>
 using namespace std;
 
-class Payment{
-  float amount;
-  int currency;
-  string sender;
-  string receiver;
-  public:
-  
-  Payment(float amount,int currency,string sender,string receiver){
-      this->amount=amount;
-      this->currency=currency;
-      this->sender=sender;
-      this->receiver=receiver;
-  }
-  
-  float getAmount(){
-      return amount;
-  }
-  int getCurrency(){
-      return currency;
-  }
-  string getSender(){
-      return sender;
-  }
-  string getReceiver(){
-      return receiver;
-  }
-};
+class Payment
+{
+    float amount;
+    int currency;
+    string sender;
+    string receiver;
 
-class RazorpayApi{
-  public:
-  bool processPaymentByRazorpayApi(Payment* payment){
-      cout<<"Processing the payemnt of "<<payment->getSender()<<"  amount "<<payment->getAmount()<<endl;
-      return true;
-  }
-};
-
-class StripeApi{
-  public:
-  bool processPaymentByStripeApi(Payment* payment){
-      cout<<"Processing the payemnt of "<<payment->getSender()<<"  amount "<<payment->getAmount()<<endl;
-      return true;
-  }
-};
-
-class PaymentGateway{
-  public:
-  virtual ~PaymentGateway()=default;
-  virtual bool processPayment(Payment* payment)=0;
-  
-  virtual bool validatePayment(Payment* payment){
-      return payment->getAmount()>0;
-  }
-  
-  virtual bool confirmPayment(Payment* payment){
-      return true;
-  }
-};
-
-class RazorpayPaymentGateway : public PaymentGateway{
-    RazorpayApi* api;
-    
-    public:
-    RazorpayPaymentGateway(){
-        api=new RazorpayApi();
+public:
+    Payment(float amount, int currency, string sender, string receiver)
+    {
+        this->amount = amount;
+        this->currency = currency;
+        this->sender = sender;
+        this->receiver = receiver;
     }
-    
-    bool processPayment(Payment* payment) override {
-        if(!validatePayment(payment)){
+
+    float getAmount()
+    {
+        return amount;
+    }
+    int getCurrency()
+    {
+        return currency;
+    }
+    string getSender()
+    {
+        return sender;
+    }
+    string getReceiver()
+    {
+        return receiver;
+    }
+};
+
+class RazorpayApi
+{
+public:
+    bool processPaymentByRazorpayApi(Payment *payment)
+    {
+        cout << "Processing the payemnt of " << payment->getSender() << "  amount " << payment->getAmount() << endl;
+        return true;
+    }
+};
+
+class StripeApi
+{
+public:
+    bool processPaymentByStripeApi(Payment *payment)
+    {
+        cout << "Processing the payemnt of " << payment->getSender() << "  amount " << payment->getAmount() << endl;
+        return true;
+    }
+};
+
+class PaymentGateway
+{
+public:
+    virtual ~PaymentGateway() = default;
+    virtual bool processPayment(Payment *payment) = 0;
+
+    virtual bool validatePayment(Payment *payment)
+    {
+        return payment->getAmount() > 0;
+    }
+
+    virtual bool confirmPayment(Payment *payment)
+    {
+        return true;
+    }
+};
+
+class RazorpayPaymentGateway : public PaymentGateway
+{
+    RazorpayApi *api;
+
+public:
+    RazorpayPaymentGateway()
+    {
+        api = new RazorpayApi();
+    }
+
+    bool processPayment(Payment *payment) override
+    {
+        if (!validatePayment(payment))
+        {
             throw runtime_error("Payment is less than zero");
         }
-        
+
         return api->processPaymentByRazorpayApi(payment);
-        
-        
     }
 };
 
-class StripeGateway : public PaymentGateway{
-    StripeApi* api;
-    
-    public:
-    StripeGateway(){
-        api=new StripeApi();
+class StripeGateway : public PaymentGateway
+{
+    StripeApi *api;
+
+public:
+    StripeGateway()
+    {
+        api = new StripeApi();
     }
-    
-    bool processPayment(Payment* payment) override {
-        if(!validatePayment(payment)){
+
+    bool processPayment(Payment *payment) override
+    {
+        if (!validatePayment(payment))
+        {
             throw runtime_error("Payment is less than zero");
         }
-        
+
         return api->processPaymentByStripeApi(payment);
- }
+    }
 };
 
-enum class Gateway{
+enum class Gateway
+{
     RAZORPAY,
     STRIPE,
 };
 
-class GatewayFactory{
-    GatewayFactory(){
-        
+class GatewayFactory
+{
+    GatewayFactory()
+    {
     }
-    
-    public:
-    
-    static GatewayFactory& getInstance(){
+
+public:
+    static GatewayFactory &getInstance()
+    {
         static GatewayFactory instance;
         return instance;
     }
-    
-    PaymentGateway* createGateway(Gateway gateway){
-        switch(gateway){
-            case Gateway::RAZORPAY :
+
+    PaymentGateway *createGateway(Gateway gateway)
+    {
+        switch (gateway)
+        {
+        case Gateway::RAZORPAY:
             return new RazorpayPaymentGateway();
             break;
-            
-            case Gateway:: STRIPE :
+
+        case Gateway::STRIPE:
             return new StripeGateway();
             break;
-            
-            default:
+
+        default:
             throw runtime_error("Gateway does not exist");
-            
         }
     }
 };
 
-class PaymentProxy: public PaymentGateway{
-  PaymentGateway* gateway;
-  int retry;
-  public:
-  
-  PaymentProxy(PaymentGateway* gateway,int retry){
-      this->gateway=gateway;
-      this->retry=retry;
-  }
-  
-  bool processPayment(Payment* payment) override {
-      for(int i=1;i<=retry;i++){
-          if(gateway->processPayment(payment)){
-              return true;
-          }
-      }
-      
-      cout<<"Max retry has been reached for the payment processing"<<endl;
-      
-      return false;
- }
-  
+class PaymentProxy : public PaymentGateway
+{
+    PaymentGateway *gateway;
+    int retry;
+
+public:
+    PaymentProxy(PaymentGateway *gateway, int retry)
+    {
+        this->gateway = gateway;
+        this->retry = retry;
+    }
+
+    bool processPayment(Payment *payment) override
+    {
+        for (int i = 1; i <= retry; i++)
+        {
+            if (gateway->processPayment(payment))
+            {
+                return true;
+            }
+        }
+
+        cout << "Max retry has been reached for the payment processing" << endl;
+
+        return false;
+    }
 };
 
-class PaymentService{
-    
-    public:
-    bool processPayment(Gateway type,Payment* payment){
-        PaymentGateway* gateway= GatewayFactory::getInstance().createGateway(type);
+class PaymentService
+{
+
+public:
+    bool processPayment(Gateway type, Payment *payment)
+    {
+        PaymentGateway *gateway = GatewayFactory::getInstance().createGateway(type);
         return gateway->processPayment(payment);
     }
 };
 
-int main() {
-    Payment payment(500,1,"keshav","chetan");
+int main()
+{
+    Payment payment(500, 1, "keshav", "chetan");
 
     PaymentService service;
 
     service.processPayment(
         Gateway::RAZORPAY,
-        &payment
-    );
+        &payment);
 
     return 0;
 }
 
-//POrt and adapter for all kinds of payments
-//Different different strategy for card,upi etc etc
-//Enternal apis
-//My port and adapter
-//factory
-//service
-// -----------------------------------------------------------------------------------------------------------------------------
+// POrt and adapter for all kinds of payments
+// Different different strategy for card,upi etc etc
+// Enternal apis
+// My port and adapter
+// factory
+// service
+//  -----------------------------------------------------------------------------------------------------------------------------
 
 #include <iostream>
 #include <memory>
@@ -194,18 +222,21 @@ using namespace std;
 // ENUMS
 //////////////////////////////////////////////////////////
 
-enum class Currency {
+enum class Currency
+{
     INR,
     USD
 };
 
-enum class PaymentStatus {
+enum class PaymentStatus
+{
     INITIATED,
     SUCCESS,
     FAILED
 };
 
-enum class GatewayType {
+enum class GatewayType
+{
     RAZORPAY,
     STRIPE
 };
@@ -214,7 +245,8 @@ enum class GatewayType {
 // PAYMENT REQUEST + RESULT
 //////////////////////////////////////////////////////////
 
-class PaymentRequest {
+class PaymentRequest
+{
 private:
     string paymentId;
     string sender;
@@ -228,8 +260,7 @@ public:
         string sender,
         string receiver,
         double amount,
-        Currency currency
-    )
+        Currency currency)
         : paymentId(paymentId),
           sender(sender),
           receiver(receiver),
@@ -243,7 +274,8 @@ public:
     Currency getCurrency() const { return currency; }
 };
 
-class PaymentResult {
+class PaymentResult
+{
 public:
     bool success;
     string transactionId;
@@ -252,8 +284,7 @@ public:
     PaymentResult(
         bool success,
         string transactionId = "",
-        string errorMessage = ""
-    )
+        string errorMessage = "")
         : success(success),
           transactionId(transactionId),
           errorMessage(errorMessage) {}
@@ -263,33 +294,40 @@ public:
 // PAYMENT METHOD STRATEGY
 //////////////////////////////////////////////////////////
 
-class PaymentMethod {
+class PaymentMethod
+{
 public:
     virtual ~PaymentMethod() = default;
-    virtual bool pay(const PaymentRequest& request) = 0;
+    virtual bool pay(const PaymentRequest &request) = 0;
 };
 
-class UpiPayment : public PaymentMethod {
+class UpiPayment : public PaymentMethod
+{
 public:
-    bool pay(const PaymentRequest& request) override {
+    bool pay(const PaymentRequest &request) override
+    {
         cout << "[UPI] Validating UPI payment for "
              << request.getSender() << endl;
         return true;
     }
 };
 
-class CardPayment : public PaymentMethod {
+class CardPayment : public PaymentMethod
+{
 public:
-    bool pay(const PaymentRequest& request) override {
+    bool pay(const PaymentRequest &request) override
+    {
         cout << "[CARD] Validating card details for "
              << request.getSender() << endl;
         return true;
     }
 };
 
-class NetBankingPayment : public PaymentMethod {
+class NetBankingPayment : public PaymentMethod
+{
 public:
-    bool pay(const PaymentRequest& request) override {
+    bool pay(const PaymentRequest &request) override
+    {
         cout << "[NETBANKING] Redirecting to bank for "
              << request.getSender() << endl;
         return true;
@@ -300,17 +338,21 @@ public:
 // EXTERNAL APIS (ADAPTER TARGETS)
 //////////////////////////////////////////////////////////
 
-class RazorpayApi {
+class RazorpayApi
+{
 public:
-    bool makePayment(double amount) {
+    bool makePayment(double amount)
+    {
         cout << "[RazorpayAPI] Processing payment: " << amount << endl;
         return true;
     }
 };
 
-class StripeApi {
+class StripeApi
+{
 public:
-    bool charge(double amount) {
+    bool charge(double amount)
+    {
         cout << "[StripeAPI] Charging amount: " << amount << endl;
         return true;
     }
@@ -320,20 +362,25 @@ public:
 // PAYMENT GATEWAY TEMPLATE METHOD
 //////////////////////////////////////////////////////////
 
-class PaymentGateway {
+class PaymentGateway
+{
 public:
     virtual ~PaymentGateway() = default;
 
-    PaymentResult processPayment(const PaymentRequest& request) {
-        if (!validate(request)) {
+    PaymentResult processPayment(const PaymentRequest &request)
+    {
+        if (!validate(request))
+        {
             return PaymentResult(false, "", "Validation failed");
         }
 
-        if (!initiate(request)) {
+        if (!initiate(request))
+        {
             return PaymentResult(false, "", "Gateway initiation failed");
         }
 
-        if (!confirm(request)) {
+        if (!confirm(request))
+        {
             return PaymentResult(false, "", "Confirmation failed");
         }
 
@@ -341,13 +388,15 @@ public:
     }
 
 protected:
-    virtual bool initiate(const PaymentRequest& request) = 0;
+    virtual bool initiate(const PaymentRequest &request) = 0;
 
-    virtual bool validate(const PaymentRequest& request) {
+    virtual bool validate(const PaymentRequest &request)
+    {
         return request.getAmount() > 0;
     }
 
-    virtual bool confirm(const PaymentRequest&) {
+    virtual bool confirm(const PaymentRequest &)
+    {
         return true;
     }
 };
@@ -356,32 +405,38 @@ protected:
 // GATEWAY IMPLEMENTATIONS
 //////////////////////////////////////////////////////////
 
-class RazorpayGateway : public PaymentGateway {
+class RazorpayGateway : public PaymentGateway
+{
 private:
     unique_ptr<RazorpayApi> api;
 
 public:
-    RazorpayGateway() {
+    RazorpayGateway()
+    {
         api = make_unique<RazorpayApi>();
     }
 
 protected:
-    bool initiate(const PaymentRequest& request) override {
+    bool initiate(const PaymentRequest &request) override
+    {
         return api->makePayment(request.getAmount());
     }
 };
 
-class StripeGateway : public PaymentGateway {
+class StripeGateway : public PaymentGateway
+{
 private:
     unique_ptr<StripeApi> api;
 
 public:
-    StripeGateway() {
+    StripeGateway()
+    {
         api = make_unique<StripeApi>();
     }
 
 protected:
-    bool initiate(const PaymentRequest& request) override {
+    bool initiate(const PaymentRequest &request) override
+    {
         return api->charge(request.getAmount());
     }
 };
@@ -390,7 +445,8 @@ protected:
 // PROXY (RETRY LOGIC)
 //////////////////////////////////////////////////////////
 
-class PaymentGatewayProxy {
+class PaymentGatewayProxy
+{
 private:
     unique_ptr<PaymentGateway> gateway;
     int retries;
@@ -399,13 +455,16 @@ public:
     PaymentGatewayProxy(unique_ptr<PaymentGateway> gateway, int retries = 3)
         : gateway(move(gateway)), retries(retries) {}
 
-    PaymentResult processPayment(const PaymentRequest& request) {
-        for (int i = 1; i <= retries; i++) {
+    PaymentResult processPayment(const PaymentRequest &request)
+    {
+        for (int i = 1; i <= retries; i++)
+        {
             cout << "[Retry Attempt] " << i << endl;
 
             PaymentResult result = gateway->processPayment(request);
 
-            if (result.success) {
+            if (result.success)
+            {
                 return result;
             }
         }
@@ -418,18 +477,21 @@ public:
 // FACTORY
 //////////////////////////////////////////////////////////
 
-class GatewayFactory {
+class GatewayFactory
+{
 public:
-    static unique_ptr<PaymentGateway> createGateway(GatewayType type) {
-        switch (type) {
-            case GatewayType::RAZORPAY:
-                return make_unique<RazorpayGateway>();
+    static unique_ptr<PaymentGateway> createGateway(GatewayType type)
+    {
+        switch (type)
+        {
+        case GatewayType::RAZORPAY:
+            return make_unique<RazorpayGateway>();
 
-            case GatewayType::STRIPE:
-                return make_unique<StripeGateway>();
+        case GatewayType::STRIPE:
+            return make_unique<StripeGateway>();
 
-            default:
-                throw runtime_error("Unsupported gateway");
+        default:
+            throw runtime_error("Unsupported gateway");
         }
     }
 };
@@ -438,14 +500,16 @@ public:
 // PAYMENT SERVICE
 //////////////////////////////////////////////////////////
 
-class PaymentService {
+class PaymentService
+{
 public:
     PaymentResult processPayment(
-        PaymentMethod& method,
+        PaymentMethod &method,
         GatewayType gatewayType,
-        const PaymentRequest& request
-    ) {
-        if (!method.pay(request)) {
+        const PaymentRequest &request)
+    {
+        if (!method.pay(request))
+        {
             return PaymentResult(false, "", "Payment method failed");
         }
 
@@ -460,14 +524,14 @@ public:
 // MAIN
 //////////////////////////////////////////////////////////
 
-int main() {
+int main()
+{
     PaymentRequest request(
         "1001",
         "Aditya",
         "Shubham",
         500,
-        Currency::INR
-    );
+        Currency::INR);
 
     UpiPayment upiMethod;
     PaymentService service;
@@ -475,13 +539,15 @@ int main() {
     PaymentResult result = service.processPayment(
         upiMethod,
         GatewayType::RAZORPAY,
-        request
-    );
+        request);
 
-    if (result.success) {
+    if (result.success)
+    {
         cout << "Payment Success. Txn ID: "
              << result.transactionId << endl;
-    } else {
+    }
+    else
+    {
         cout << "Payment Failed: "
              << result.errorMessage << endl;
     }

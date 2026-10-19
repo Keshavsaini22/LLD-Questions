@@ -1,3 +1,5 @@
+QUESTION- Payment Service with Multiple Gateway Integrations-
+
 1.Should support multiple providers (PAYTM,RAZORPAY etc)
 2.We can easily add new gateways in future
 3.There should be a standard payment flow with required validations
